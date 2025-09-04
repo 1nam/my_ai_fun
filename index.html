@@ -75,10 +75,15 @@
     .face.top   { transform: rotateX(90deg) translateZ(50px); }
     .face.bottom{ transform: rotateX(-90deg) translateZ(50px); }
 
-    @keyframes spin {
-      from { transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg); }
-      to   { transform: rotateX(360deg) rotateY(360deg) rotateZ(360deg); }
-    }
+ @keyframes spin {
+  from { --rx: 0deg; --ry: 0deg; --rz: 0deg; }
+  to   { --rx: 360deg; --ry: 360deg; --rz: 360deg; }
+}
+.cube {
+  animation: spin 10s linear infinite;
+  transform-style: preserve-3d;
+}
+
 
     /* Soft pulse (base); amplitude-reactive pulse is added in JS */
     .pulse {
@@ -374,21 +379,23 @@
     window.addEventListener('keydown', unlockAndStart, { once: true });
 
     // Visual pulse based on analyser energy
-    function animate() {
-      const analyser = AudioEngine.visualAnalyser();
-      if (analyser) {
-        const buffer = new Uint8Array(analyser.frequencyBinCount);
-        analyser.getByteFrequencyData(buffer);
-        let sum = 0;
-        for (let i = 0; i < buffer.length; i++) sum += buffer[i];
-        const energy = sum / (buffer.length * 255); // 0..1
-        // Map energy to scale and glow
-        const scale = 0.9 + energy * 0.8; // base size + pulse
-        cube.style.transform = `scale(${scale})`;
-        cube.style.filter = `drop-shadow(0 0 ${8 + energy*40}px rgba(30,144,255,${0.35 + energy*0.5}))`;
-      }
-      requestAnimationFrame(animate);
-    }
+   function animate() {
+  const analyser = AudioEngine.visualAnalyser();
+  if (analyser) {
+    const buffer = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(buffer);
+    let sum = 0;
+    for (let i = 0; i < buffer.length; i++) sum += buffer[i];
+    const energy = sum / (buffer.length * 255); // 0..1
+    const scale = 0.9 + energy * 0.8;
+
+    // Keep CSS rotation AND apply scale
+    cube.style.transform = `scale(${scale}) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)) rotateZ(var(--rz,0deg))`;
+    cube.style.filter = `drop-shadow(0 0 ${8 + energy*40}px rgba(30,144,255,${0.35 + energy*0.5}))`;
+  }
+  requestAnimationFrame(animate);
+}
+
   </script>
 </body>
 </html>
