@@ -60,3 +60,5 @@ This project is a single‑page static website that demonstrates browser‑based
 ## License
 
 This project is released under the MIT License. You are free to use, modify, and share it.
+
+website https://1nam.github.io/my_ai_fun/
