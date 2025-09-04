@@ -78,6 +78,7 @@
       padding: 24px;
       cursor: default; /* Ensure this is default for the overlay */
       -webkit-tap-highlight-color: transparent;
+      z-index: 100; /* Ensure overlay is on top */
     }
     .gate .badge { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: #60a5fa; }
     .gate h1 { margin: 8px 0 0 0; font-weight: 700; font-size: clamp(18px, 3.5vw, 28px); }
@@ -128,10 +129,11 @@
 
     // Ensure audio starts after user interaction (tap or click)
     window.addEventListener('pointerdown', () => {
-      gate.classList.add('visible');
+      // Hide the gate overlay when clicked
+      gate.style.display = 'none';
+
       audio.play().then(() => {
         console.log('Audio started after user interaction');
-        gate.classList.remove('visible');  // Hide overlay once music starts
       }).catch(err => {
         console.error('Error playing audio after interaction:', err);
       });
