@@ -16,7 +16,7 @@
     html, body {
       height: 100%;
       margin: 0;
-      background: #f0f0f0;  /* Changed to light gray temporarily for visibility */
+      background: #f0f0f0;  /* Light gray for visibility */
       color: var(--text);
       font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu,
         Cantarell, Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji",
@@ -45,7 +45,7 @@
       overflow: hidden;
     }
     .cube-wrap {
-      width: 80vmin;  /* Set to 80% of the viewport size */
+      width: 80vmin;  /* 80% of the viewport size */
       height: 80vmin;
       perspective: 1200px;
       display: grid;
@@ -61,7 +61,7 @@
       background: red; /* Red for visibility */
       box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
       animation: spin 10s infinite linear; /* Simplified spin animation */
-      border: 2px solid green; /* Added border for debugging */
+      border: 2px solid green; /* Border for debugging */
     }
     .face {
       position: absolute;
@@ -125,11 +125,11 @@
     </div>
   </div>
   <script>
-    // --- Web Audio API music code remains fully intact ---
-    
+    // Initialize Web Audio Engine
     const cube = document.getElementById('cube');
     const gate = document.getElementById('gate');
 
+    // Function to animate the cube
     function animate() {
       const analyser = AudioEngine.visualAnalyser();
       if (analyser) {
@@ -140,26 +140,36 @@
         const energy = sum / (buffer.length * 255);
         const scale = 0.9 + energy * 0.8;
 
-        // Apply transformations
+        // Apply transformations to the cube
         cube.style.transform = `scale(${scale}) rotateX(var(--rx)) rotateY(var(--ry)) rotateZ(var(--rz))`;
-        console.log(cube.style.transform);  // Debugging line
-
-        cube.style.filter = `drop-shadow(0 0 ${8 + energy*40}px rgba(30,144,255,${0.35 + energy*0.5}))`;
+        cube.style.filter = `drop-shadow(0 0 ${8 + energy * 40}px rgba(30,144,255,${0.35 + energy * 0.5}))`;
       }
       requestAnimationFrame(animate);
     }
 
+    // Start music on page load (after interaction)
     window.addEventListener('load', () => {
-      try { AudioEngine.startPlaylist(); } catch { gate.classList.add('visible'); }
+      try {
+        // Attempt to start the playlist
+        AudioEngine.startPlaylist();
+      } catch {
+        // Show the gate if music fails to start
+        gate.classList.add('visible');
+      }
       animate();
     });
 
+    // Unlock the audio and start the music
     function unlockAndStart() {
       gate.classList.remove('visible');
-      try { AudioEngine.startPlaylist(); } catch (_) {}
+      try {
+        AudioEngine.startPlaylist();
+      } catch (_) {}
       window.removeEventListener('pointerdown', unlockAndStart);
       window.removeEventListener('keydown', unlockAndStart);
     }
+
+    // Listeners to unlock audio (tap or press any key)
     window.addEventListener('pointerdown', unlockAndStart, { once: true });
     window.addEventListener('keydown', unlockAndStart, { once: true });
   </script>
