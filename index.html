@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Cube — Music & Webpage made with AI</title>
+  <style>
+    :root {
+      --bg: #000;
+      --text: #e5e7eb;
+      --blue: #1e90ff;
+    }
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu,
+        Cantarell, Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji",
+        "Segoe UI Emoji";
+    }
+    header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      padding: 18px 20px;
+      text-align: center;
+      letter-spacing: 0.02em;
+      font-weight: 600;
+      font-size: clamp(14px, 2.8vw, 18px);
+      text-transform: uppercase;
+      color: #9ca3af;
+      user-select: none;
+      pointer-events: none; /* header shouldn't block clicks that start audio */
+    }
+    .stage {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+
+    /* Center cube wrapper */
+    .cube-wrap {
+      width: min(40vmin, 360px);
+      height: min(40vmin, 360px);
+      perspective: 1200px;
+      display: grid;
+      place-items: center;
+      filter: drop-shadow(0 0 12px rgba(30,144,255,0.35)) drop-shadow(0 0 48px rgba(30,144,255,0.2));
+    }
+
+    .cube {
+      width: 50%;
+      height: 50%;
+      transform-style: preserve-3d;
+      position: relative;
+      animation: spin 10s linear infinite;
+    }
+
+    .face {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(145deg, rgba(30,144,255,0.95), rgba(30,144,255,0.6));
+      border: 2px solid rgba(255,255,255,0.08);
+      box-shadow: inset 0 0 30px rgba(0,0,0,0.25);
+    }
+    /* Build the 3D cube */
+    .face.front { transform: translateZ(50px); }
+    .face.back  { transform: rotateY(180deg) translateZ(50px); }
+    .face.right { transform: rotateY(90deg) translateZ(50px); }
+    .face.left  { transform: rotateY(-90deg) translateZ(50px); }
+    .face.top   { transform: rotateX(90deg) translateZ(50px); }
+    .face.bottom{ transform: rotateX(-90deg) translateZ(50px); }
+
+    @keyframes spin {
+      from { transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg); }
+      to   { transform: rotateX(360deg) rotateY(360deg) rotateZ(360deg); }
+    }
+
+    /* Soft pulse (base); amplitude-reactive pulse is added in JS */
+    .pulse {
+      transition: transform 0.08s linear; /* fast response to audio */
+    }
+
+    /* Minimal tap-to-start overlay to satisfy browser autoplay rules. Not a button. */
+    .gate {
+      position: fixed;
+      inset: 0;
+      display: none; /* default hidden; shown only if autoplay is blocked */
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(1200px 1200px at 50% 50%, rgba(30,144,255,0.07), transparent 60%);
+      color: #cbd5e1;
+      text-align: center;
+      padding: 24px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .gate.visible { display: flex; }
+    .gate .badge {
+      font-size: 12px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: #60a5fa;
+    }
+    .gate h1 {
+      margin: 8px 0 0 0;
+      font-weight: 700;
+      font-size: clamp(18px, 3.5vw, 28px);
+    }
+    .gate p { margin: 10px 0 0 0; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <header>this website and music was created with AI</header>
+  <div class="stage" id="stage">
+    <div class="cube-wrap">
+      <div class="cube pulse" id="cube">
+        <div class="face front"></div>
+        <div class="face back"></div>
+        <div class="face right"></div>
+        <div class="face left"></div>
+        <div class="face top"></div>
+        <div class="face bottom"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="gate" id="gate" aria-hidden="true">
+    <div>
+      <div class="badge">Sound is off</div>
+      <h1>Tap anywhere to start the AI music</h1>
+      <p>No play/stop controls. It just plays three randomly generated tracks.</p>
+    </div>
+  </div>
+
+  <script>
+    // --- Utility: PRNG with seed for reproducible "tracks" ---
+    function mulberry32(a) {
+      return function() {
+        var t = (a += 0x6D2B79F5);
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    // Musical helpers
+    const scales = {
+      minor: [0, 2, 3, 5, 7, 8, 10],
+      dorian: [0, 2, 3, 5, 7, 9, 10],
+      mixolydian: [0, 2, 4, 5, 7, 9, 10]
+    };
+
+    function midiToFreq(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+
+    // --- Audio engine ---
+    const AudioEngine = (() => {
+      let ctx, master, analyser;
+      let currentStop = null; // function to stop the current song
+
+      function ensureContext() {
+        if (!ctx) {
+          ctx = new (window.AudioContext || window.webkitAudioContext)();
+          master = ctx.createGain();
+          master.gain.value = 0.9; // overall volume
+          analyser = ctx.createAnalyser();
+          analyser.fftSize = 2048;
+          master.connect(analyser);
+          analyser.connect(ctx.destination);
+        }
+        return ctx.state;
+      }
+
+      function makeNoiseBuffer() {
+        const buffer = ctx.createBuffer(1, ctx.sampleRate * 1.5, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+        return buffer;
+      }
+
+      function scheduleNote(gainNode, time, duration) {
+        gainNode.gain.cancelScheduledValues(time);
+        gainNode.gain.setValueAtTime(0.0001, time);
+        gainNode.gain.exponentialRampToValueAtTime(1.0, time + Math.min(0.02, duration * 0.25));
+        const decay = Math.max(0.03, duration * 0.65);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, time + decay);
+      }
+
+      function createSong(seed) {
+        // Create a simple AI-ish generative piece using seeded randomness
+        const rand = mulberry32(seed >>> 0);
+        const songLength = 28 + Math.floor(rand() * 8); // seconds
+        const bpm = 92 + Math.floor(rand() * 36); // 92–128
+        const beat = 60 / bpm;
+        const step = beat / 2; // 8th-note grid
+
+        const rootMidi = 48 + Math.floor(rand() * 12); // C2..B2 as root
+        const scaleName = Object.keys(scales)[Math.floor(rand() * 3)];
+        const scale = scales[scaleName];
+
+        // BASS
+        const bassGain = ctx.createGain();
+        bassGain.gain.value = 0.0001;
+        const bass = ctx.createOscillator();
+        bass.type = 'sawtooth';
+        bass.connect(bassGain);
+        bassGain.connect(master);
+        bass.start();
+
+        // LEAD
+        const leadGain = ctx.createGain();
+        leadGain.gain.value = 0.0001;
+        const lead = ctx.createOscillator();
+        lead.type = 'triangle';
+        lead.connect(leadGain);
+        leadGain.connect(master);
+        lead.start();
+
+        // DRUMS (kick + snare from noise)
+        const noiseBuffer = makeNoiseBuffer();
+        const drumGain = ctx.createGain();
+        drumGain.gain.value = 0.7;
+        drumGain.connect(master);
+
+        // Simple pattern generators
+        function pick(scaleSteps, octave) {
+          const deg = scaleSteps[Math.floor(rand() * scaleSteps.length)];
+          return midiToFreq(rootMidi + deg + 12 * octave);
+        }
+
+        // Scheduling loop
+        let nextTime = ctx.currentTime + 0.05;
+        const endTime = ctx.currentTime + songLength;
+        let stepIndex = 0;
+        const scheduler = setInterval(() => {
+          while (nextTime < ctx.currentTime + 0.15 && nextTime < endTime) {
+            // Bass every quarter note
+            if (stepIndex % 2 === 0) {
+              const freq = pick([0, 0, 5, 7, 3], 0);
+              bass.frequency.setValueAtTime(freq, nextTime);
+              scheduleNote(bassGain, nextTime, beat * 0.95);
+            }
+            // Lead melody with rests
+            if (rand() > 0.2) {
+              const freq = pick(scale, 1 + (rand() > 0.7 ? 1 : 0));
+              lead.frequency.setValueAtTime(freq, nextTime);
+              scheduleNote(leadGain, nextTime, step * (0.6 + rand() * 0.6));
+            }
+            // Kick on 1 & 3, snare on 2 & 4
+            const beatPos = (stepIndex % 8);
+            if (beatPos === 0 || beatPos === 4) {
+              // KICK: short sine drop via oscillator + noise thump
+              const kGain = ctx.createGain();
+              kGain.gain.value = 1.0;
+              kGain.connect(drumGain);
+              const k = ctx.createOscillator();
+              k.type = 'sine';
+              k.frequency.setValueAtTime(120, nextTime);
+              k.frequency.exponentialRampToValueAtTime(48, nextTime + 0.08);
+              k.connect(kGain);
+              k.start(nextTime);
+              k.stop(nextTime + 0.1);
+              kGain.gain.setValueAtTime(1.0, nextTime);
+              kGain.gain.exponentialRampToValueAtTime(0.0001, nextTime + 0.12);
+            }
+            if (beatPos === 2 || beatPos === 6) {
+              // SNARE: noise burst through rapid decay
+              const src = ctx.createBufferSource();
+              src.buffer = noiseBuffer;
+              const sGain = ctx.createGain();
+              sGain.gain.value = 0.9;
+              src.connect(sGain);
+              sGain.connect(drumGain);
+              const t = nextTime;
+              sGain.gain.setValueAtTime(0.8, t);
+              sGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+              src.start(t);
+              src.stop(t + 0.1);
+            }
+
+            nextTime += step;
+            stepIndex++;
+          }
+        }, 25);
+
+        // auto-stop
+        const stopper = setTimeout(() => stop(), (songLength + 0.5) * 1000);
+
+        function stop() {
+          clearInterval(scheduler);
+          clearTimeout(stopper);
+          try { bass.stop(); } catch {}
+          try { lead.stop(); } catch {}
+          bassGain.disconnect();
+          leadGain.disconnect();
+          drumGain.disconnect();
+        }
+
+        return { stop, endTime };
+      }
+
+      function visualAnalyser() {
+        return analyser;
+      }
+
+      async function startPlaylist(onEnded) {
+        ensureContext();
+        // Create three seeded tracks ("3 random songs")
+        const seeds = [
+          Math.floor(Math.random() * 1e9),
+          Math.floor(Math.random() * 1e9),
+          Math.floor(Math.random() * 1e9)
+        ];
+        let index = 0;
+        const playNext = () => {
+          if (currentStop) currentStop();
+          if (index >= seeds.length) { index = 0; }
+          const s = createSong(seeds[index++]);
+          currentStop = s.stop;
+          const wait = (s.endTime - ctx.currentTime + 0.1) * 1000;
+          setTimeout(playNext, Math.max(0, wait));
+        };
+        playNext();
+        if (typeof onEnded === 'function') onEnded();
+      }
+
+      return { ensureContext, visualAnalyser, startPlaylist };
+    })();
+
+    // --- UI / Visualizer ---
+    const cube = document.getElementById('cube');
+    const gate = document.getElementById('gate');
+
+    async function init() {
+      const state = AudioEngine.ensureContext();
+      try {
+        await AudioEngine.startPlaylist();
+      } catch (e) {
+        // If autoplay is blocked, show the overlay
+        gate.classList.add('visible');
+      }
+
+      // If context remains suspended (autoplay blocked), show gate
+      if ((window.AudioContext || window.webkitAudioContext) &&
+          (document.hidden === false)) {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        if (ctx.state === 'suspended') {
+          // Not reliable to check another context; rely on user gesture anyway
+        }
+        ctx.close();
+      }
+
+      animate();
+    }
+
+    // Start on load attempt
+    window.addEventListener('load', init);
+
+    // Start on first interaction (required by many browsers for audio)
+    function unlockAndStart() {
+      gate.classList.remove('visible');
+      try {
+        AudioEngine.ensureContext();
+        if (typeof AudioEngine.startPlaylist === 'function') AudioEngine.startPlaylist();
+      } catch (_) {}
+      window.removeEventListener('pointerdown', unlockAndStart);
+      window.removeEventListener('keydown', unlockAndStart);
+    }
+    window.addEventListener('pointerdown', unlockAndStart, { once: true });
+    window.addEventListener('keydown', unlockAndStart, { once: true });
+
+    // Visual pulse based on analyser energy
+    function animate() {
+      const analyser = AudioEngine.visualAnalyser();
+      if (analyser) {
+        const buffer = new Uint8Array(analyser.frequencyBinCount);
+        analyser.getByteFrequencyData(buffer);
+        let sum = 0;
+        for (let i = 0; i < buffer.length; i++) sum += buffer[i];
+        const energy = sum / (buffer.length * 255); // 0..1
+        // Map energy to scale and glow
+        const scale = 0.9 + energy * 0.8; // base size + pulse
+        cube.style.transform = `scale(${scale})`;
+        cube.style.filter = `drop-shadow(0 0 ${8 + energy*40}px rgba(30,144,255,${0.35 + energy*0.5}))`;
+      }
+      requestAnimationFrame(animate);
+    }
+  </script>
+</body>
+</html>
