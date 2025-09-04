@@ -78,10 +78,11 @@
     .face.top   { transform: rotateX(90deg) translateZ(50px); }
     .face.bottom{ transform: rotateX(-90deg) translateZ(50px); }
 
- @keyframes spin {
+@keyframes spin {
   from { --rx: 0deg; --ry: 0deg; --rz: 0deg; }
-  to   { --rx: 360deg; --ry: 360deg; --rz: 360deg; }
+  to   { --rx: 180deg; --ry: 180deg; --rz: 180deg; } /* Reduce rotation range */
 }
+
 .cube {
   animation: spin 10s linear infinite;
   transform-style: preserve-3d;
