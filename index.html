@@ -113,26 +113,26 @@
     const audio = new Audio();
     audio.src = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';  // Replace with your own MP3 URL
     audio.loop = true;
+    
+    // Ensure audio is playing after the user clicks
+    const gate = document.getElementById('gate');
+    const cube = document.getElementById('cube');
 
     // Create an AudioContext and an AnalyserNode to get frequency data
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
     const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 256;  // Set the FFT size (the number of frequency bins)
+    analyser.fftSize = 256;
     const bufferLength = analyser.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
     const sourceNode = audioContext.createMediaElementSource(audio);
     sourceNode.connect(analyser);
     analyser.connect(audioContext.destination);
 
-    // Show the "Click anywhere" overlay initially
-    const gate = document.getElementById('gate');
-
-    // Ensure audio starts after user interaction (tap or click)
+    // Trigger audio play after user interaction
     window.addEventListener('pointerdown', () => {
-      // Hide the gate overlay when clicked
-      gate.style.display = 'none';
+      gate.style.display = 'none'; // Hide the overlay
 
-      // Make sure AudioContext is resumed if needed
+      // Check if the audio context is suspended (needed for some browsers)
       if (audioContext.state === 'suspended') {
         audioContext.resume().then(() => {
           audio.play().then(() => {
@@ -150,34 +150,24 @@
       }
     });
 
-    // Animation for the cube reacting to music
-    const cube = document.getElementById('cube');
-
+    // Animate cube based on audio frequency
     function animateCube() {
-      // Get the frequency data
       analyser.getByteFrequencyData(dataArray);
 
-      // Calculate the overall energy of the sound (the sum of all frequencies)
       let sum = 0;
       for (let i = 0; i < bufferLength; i++) {
         sum += dataArray[i];
       }
 
-      // Normalize energy and scale the cube size based on the music's energy
       const energy = sum / (bufferLength * 255);
       const scale = 0.9 + energy * 0.8;
 
-      // Update cube size based on audio data
       cube.style.transform = `scale(${scale}) rotateX(var(--rx)) rotateY(var(--ry)) rotateZ(var(--rz))`;
-
-      // Apply a glowing effect to the cube based on the energy
       cube.style.filter = `drop-shadow(0 0 ${8 + energy * 40}px rgba(30,144,255,${0.35 + energy * 0.5}))`;
 
-      // Keep looping the animation
       requestAnimationFrame(animateCube);
     }
 
-    // Start animation
     animateCube();
   </script>
 </body>
